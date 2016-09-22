@@ -135,7 +135,7 @@ void configure_callback(leddar::ScanConfig &config, uint32_t level)
     LeddarWriteConfiguration(handle);
 
     // Update scan time
-    scan_time = (1 << config.accumulations) * (1 << config.oversampling - 1) / 12800.0;
+    scan_time = (1 << config.accumulations) * (1 << config.oversampling) / 12800.0;
 }
 
 static void connect(LeddarHandle handle) 
