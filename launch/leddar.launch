@@ -1,15 +1,15 @@
 <launch>
   <!-- Read arguments -->
-  <arg name="frame" default="leddar"/>
-  <arg name="range" default="50.1"/>
+  <arg name="frame" default="laser"/>
+  <arg name="range" default="11.7"/>
   <arg name="accumulations" default="6"/>
   <arg name="oversampling" default="3"/>
-  <arg name="base_point_count" default="24"/>
+  <arg name="base_point_count" default="8"/>
   <arg name="threshold_offset" default="0"/>
   <arg name="acq_options" default="1"/>
-  <arg name="intensity" default="7"/>
+  <arg name="intensity" default="0"/>
 
-  <node name="leddar_node" pkg="leddar" type="leddar_node"
+  <node name="leddar" pkg="leddar" type="leddar_node"
     output="screen" respawn="true">
       <!-- Set ROS parameters -->
       <param name="frame" value="$(arg frame)"/>

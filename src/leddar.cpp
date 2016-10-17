@@ -56,21 +56,23 @@ static void handle_detections(void *handle)
     msg.angle_increment = angle_increment;
     msg.range_min = 0.0;
     msg.range_max = max_range;
+    msg.time_increment = 0.0;
     msg.scan_time = scan_time;
 
     // Load detection and amplitudes into message.
-    msg.ranges = sensor_msgs::LaserScan::_ranges_type(beam_count, max_range + 1);
+    msg.ranges = sensor_msgs::LaserScan::_ranges_type(beam_count, max_range);
     msg.intensities = sensor_msgs::LaserScan::_intensities_type(beam_count, 0.0);
-    for (int i = 0; i < count; i++)
+    for (int i = 0; i < count; i++) {
         if (detections[i].mSegment < beam_count) {
-            if (detections[i].mDistance < msg.ranges[detections[i].mSegment])
+            if (detections[i].mDistance < msg.ranges[beam_count - detections[i].mSegment - 1])
             {
-                msg.ranges[detections[i].mSegment] = detections[i].mDistance;
-                msg.intensities[detections[i].mSegment] = detections[i].mAmplitude / MAX_AMPLITUDE;
+                msg.ranges[beam_count - detections[i].mSegment - 1] = detections[i].mDistance;
+                msg.intensities[beam_count - detections[i].mSegment - 1] = detections[i].mAmplitude / MAX_AMPLITUDE;
             }
         }
         else
             ROS_ERROR("invalid segment: %d", detections[i].mSegment);
+    }
 
     // Publish and keep going.
     pub.publish(msg);
@@ -105,37 +107,50 @@ std::string getTextProperty(void *handle, LdProperties property_id)
 
 void configure_callback(leddar::ScanConfig &config, uint32_t level) 
 {
+    ros::NodeHandle nh("~");
+    
     ROS_INFO("Reconfiguring...");
+    ROS_INFO("frame: %s", frame.c_str());
+    ROS_INFO("range: %f", max_range);
+    ROS_INFO("beam count: %d", beam_count);
+    ROS_INFO("field of view: %f", field_of_view);
+    ROS_INFO("min angle: %f", angle_min);
+    ROS_INFO("max angle: %f", angle_max);
+    ROS_INFO("angle increment: %f", angle_increment);
 
     // Set relative intensity of LEDs.
-    ROS_DEBUG("INTENSITY: %d", config.intensity);
+    ROS_INFO("intensity: %d", config.intensity);
     LeddarSetProperty(handle, PID_LED_INTENSITY, 0, config.intensity);
     
     // Set automatic LED intensity.
-    ROS_DEBUG("ACQ OPTIONS: %d", config.acq_options);
+    ROS_INFO("acq options: %d", config.acq_options);
     LeddarSetProperty(handle, PID_ACQ_OPTIONS, 0, config.acq_options);
 
     // Set number of accumulations to perform.
-    ROS_DEBUG("ACCUMULATIONS: %d", config.accumulations);
+    ROS_INFO("accumulations: %d", config.accumulations);
     LeddarSetProperty(handle, PID_ACCUMULATION_EXPONENT, 0, config.accumulations);
 
     // Set number of oversamplings to perform between base samples.
-    ROS_DEBUG("OVERSAMPLING: %d", config.oversampling);
+    ROS_INFO("oversampling: %d", config.oversampling);
     LeddarSetProperty(handle, PID_OVERSAMPLING_EXPONENT, 0, config.oversampling);
 
     // Set number of base samples acquired.
-    ROS_DEBUG("BASE SAMPLES: %d", config.base_point_count);
+    ROS_INFO("base samples: %d", config.base_point_count);
     LeddarSetProperty(handle, PID_BASE_POINT_COUNT, 0, config.base_point_count);
 
     // Set offset to increase detection threshold.
-    ROS_DEBUG("THRESHOLD OFFSET: %d", config.threshold_offset);
+    ROS_INFO("threshold offset: %d", config.threshold_offset);
     LeddarSetProperty(handle, PID_THRESHOLD_OFFSET, 0, config.threshold_offset);
 
     // Write changes to Leddar.
-    LeddarWriteConfiguration(handle);
+    int code = LeddarWriteConfiguration(handle);
+    if (code != LD_SUCCESS)
+        throw std::runtime_error("failed to write configuration: " + std::to_string(code));
 
     // Update scan time
     scan_time = (1 << config.accumulations) * (1 << config.oversampling) / 12800.0;
+    nh.setParam("scan_time", scan_time);
+    ROS_INFO("scan time: %f", scan_time);
 }
 
 static void connect(LeddarHandle handle) 
@@ -188,9 +203,15 @@ int main(int argc, char** argv)
 
         beam_count = getIntProperty(handle, PID_SEGMENT_COUNT);
         field_of_view = getDoubleProperty(handle, PID_FIELD_OF_VIEW);
-        angle_min = angles::from_degrees(-field_of_view / 2.0);
-        angle_max = angles::from_degrees(field_of_view / 2.0);
         angle_increment = angles::from_degrees(field_of_view / beam_count);
+        angle_min = angles::from_degrees((-field_of_view + (field_of_view / beam_count)) / 2.0);
+        angle_max = angles::from_degrees((field_of_view  - (field_of_view / beam_count)) / 2.0);
+
+        nh.setParam("beam_count", beam_count);
+        nh.setParam("field_of_view", field_of_view);
+        nh.setParam("angle_min", angle_min);
+        nh.setParam("angle_max", angle_max);
+        nh.setParam("angle_increment", angle_increment);
 
         // Set up dynamic_reconfigure server and callback.
         dynamic_reconfigure::Server<leddar::ScanConfig> server;
@@ -198,35 +219,11 @@ int main(int argc, char** argv)
         f = boost::bind(&configure_callback, _1, _2);
         server.setCallback(f);
 
-        bool transfer_started = false;
-        while (ros::ok())
-        {
-            // Enable data transfer is disabled
-            if (!transfer_started)
-            {
-                ROS_INFO("starting data transfers");
-                code = LeddarStartDataTransfer(handle, LDDL_DETECTIONS);
-                if (code != LD_SUCCESS)
-                    throw std::runtime_error("failed to start detect transfers: " + std::to_string(code));
-                transfer_started = true;
-            }
-
-            // Wait for detection to be available
-            code = LeddarWaitForData(handle, 160);
-            if (code != LD_SUCCESS)
-            {
-                ROS_INFO("timeout, stopping data transfers");
-                code = LeddarStopDataTransfer(handle);
-                if (code != LD_SUCCESS)
-                    throw std::runtime_error("failed to stop detect transfers: " + std::to_string(code));
-                transfer_started = false;
-            }
-
-            // Publish the detections
-            handle_detections(handle);
-
-            ros::spinOnce();
-        }
+        code = LeddarStartDataTransfer(handle, LDDL_DETECTIONS);
+        if (code != LD_SUCCESS)
+            throw std::runtime_error("failed to start detect transfers: " + std::to_string(code));
+        LeddarSetCallback(handle, handle_detections, handle);
+        ros::spin();
     }
     catch (std::runtime_error& e)
     {
