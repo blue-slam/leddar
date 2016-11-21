@@ -27,6 +27,7 @@ static double angle_min;
 static double angle_max;
 static double angle_increment;
 static double scan_time;
+static double calibration_offset;
 
 // ROS publisher.
 ros::Publisher pub;
@@ -66,7 +67,7 @@ static void handle_detections(void *handle)
         if (detections[i].mSegment < beam_count) {
             if (detections[i].mDistance < msg.ranges[beam_count - detections[i].mSegment - 1])
             {
-                msg.ranges[beam_count - detections[i].mSegment - 1] = detections[i].mDistance;
+                msg.ranges[beam_count - detections[i].mSegment - 1] = detections[i].mDistance - calibration_offset;
                 msg.intensities[beam_count - detections[i].mSegment - 1] = detections[i].mAmplitude / MAX_AMPLITUDE;
             }
         }
@@ -117,6 +118,7 @@ void configure_callback(leddar::ScanConfig &config, uint32_t level)
     ROS_INFO("min angle: %f", angle_min);
     ROS_INFO("max angle: %f", angle_max);
     ROS_INFO("angle increment: %f", angle_increment);
+    ROS_INFO("calibration offset: %f", calibration_offset);
 
     // Set relative intensity of LEDs.
     ROS_INFO("intensity: %d", config.intensity);
@@ -146,6 +148,9 @@ void configure_callback(leddar::ScanConfig &config, uint32_t level)
     int code = LeddarWriteConfiguration(handle);
     if (code != LD_SUCCESS)
         throw std::runtime_error("failed to write configuration: " + std::to_string(code));
+
+    // Update calibraion offset
+    calibration_offset = config.calibration_offset;
 
     // Update scan time
     scan_time = (1 << config.accumulations) * (1 << config.oversampling) / 12800.0;
@@ -200,6 +205,7 @@ int main(int argc, char** argv)
 
         nh.getParam("range", max_range);
         nh.getParam("frame", frame);
+        nh.getParam("calibration_offset", calibration_offset);
 
         beam_count = getIntProperty(handle, PID_SEGMENT_COUNT);
         field_of_view = getDoubleProperty(handle, PID_FIELD_OF_VIEW);

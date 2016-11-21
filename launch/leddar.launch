@@ -1,24 +1,23 @@
 <launch>
-  <!-- Read arguments -->
-  <arg name="frame" default="laser"/>
-  <arg name="range" default="11.7"/>
-  <arg name="accumulations" default="6"/>
-  <arg name="oversampling" default="3"/>
-  <arg name="base_point_count" default="8"/>
-  <arg name="threshold_offset" default="0"/>
-  <arg name="acq_options" default="1"/>
-  <arg name="intensity" default="0"/>
+    <arg name="machine"/>
+    <arg name="frame" default="laser"/>
+    <arg name="range" default="11.7"/>
+    <arg name="accumulations" default="6"/>
+    <arg name="oversampling" default="3"/>
+    <arg name="base_point_count" default="8"/>
+    <arg name="threshold_offset" default="0"/>
+    <arg name="acq_options" default="1"/>
+    <arg name="intensity" default="0"/>
+    <arg name="calibraion_offset" default="0.25"/>
 
-  <node name="leddar" pkg="leddar" type="leddar_node"
-    output="screen" respawn="true">
-      <!-- Set ROS parameters -->
-      <param name="frame" value="$(arg frame)"/>
-      <param name="range" value="$(arg range)"/>
-      <param name="accumulations" value="$(arg accumulations)"/>
-      <param name="oversampling" value="$(arg oversampling)"/>
-      <param name="base_point_count" value="$(arg base_point_count)"/>
-      <param name="threshold_offset" value="$(arg threshold_offset)"/>
-      <param name="acq_options" value="$(arg acq_options)"/>
-      <param name="intensity" value="$(arg intensity)"/>
-  </node>
+    <node name="leddar" pkg="leddar" type="leddar_node" machine="$(arg machine)" output="screen" respawn="true">
+        <param name="frame" value="$(arg frame)"/>
+        <param name="range" value="$(arg range)"/>
+        <param name="accumulations" value="$(arg accumulations)"/>
+        <param name="oversampling" value="$(arg oversampling)"/>
+        <param name="base_point_count" value="$(arg base_point_count)"/>
+        <param name="threshold_offset" value="$(arg threshold_offset)"/>
+        <param name="acq_options" value="$(arg acq_options)"/>
+        <param name="intensity" value="$(arg intensity)"/>
+    </node>
 </launch>
